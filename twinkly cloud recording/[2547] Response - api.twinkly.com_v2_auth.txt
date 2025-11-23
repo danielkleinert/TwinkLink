@@ -1,0 +1,25 @@
+HTTP/1.1 200 OK
+Date: Sun, 23 Nov 2025 00:22:45 GMT
+Content-Type: application/json
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: nginx
+Vary: Accept-Encoding
+Access-Control-Allow-Origin: https://apidoc.production.twinkly.cloud
+Vary: Origin
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: accelerometer=(), camera=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()
+Cross-Origin-Embedder-Policy: unsafe-none
+Cross-Origin-Opener-Policy: unsafe-none
+Cross-Origin-Resource-Policy: cross-origin
+Content-Encoding: gzip
+
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUI [...redacted...] axMeCEbfo62BXTUw",
+  "refresh_token": "eyJhbGciOiJIUzUxMiIsInR5cCIgOiAiSldUI [...redacted...] yA5vH4KndnAa9CQ",
+  "expires_in": 86400,
+  "token_type": "Bearer"
+}

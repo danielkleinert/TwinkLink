@@ -1,0 +1,151 @@
+HTTP/1.1 200 OK
+Date: Sun, 23 Nov 2025 10:04:35 GMT
+Content-Type: application/json
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: nginx
+Vary: Accept-Encoding
+ETag: W/"32692f3f76c15e1d64c9f44aff6c0faaa5471090"
+Access-Control-Allow-Origin: https://apidoc.production.twinkly.cloud
+Vary: Origin
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: accelerometer=(), camera=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()
+Cross-Origin-Embedder-Policy: require-corp
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: cross-origin
+Content-Encoding: gzip
+
+{
+  "objects": [
+    {
+      "id": 9929333,
+      "name": "Twink",
+      "ledCount": 400,
+      "ledProfile": "RGBW",
+      "fps": 12.0,
+      "capacity": 2536,
+      "opMode": null,
+      "ownerId": 1832448,
+      "layout": {
+        "id": 6922873,
+        "objectId": 9929333,
+        "name": "Twink",
+        "geometry": "undefined",
+        "aspectXY": 0.566096,
+        "aspectXZ": 2.13792,
+        "coords": "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",
+        "source": "3d",
+        "synthesized": false,
+        "imageUrl": "https://twinkly-core-storage.s3.amazonaws.com/layouts/prod/0338fdc1-a063-463e-9780-f36c7cbdc6a5.jpg?ts=1763857696586",
+        "uuid": "c80c2513-2154-3fc7-7401-caa22ff10ed8",
+        "created": "2025-11-23T00:09:14Z",
+        "updated": "2025-11-23T00:28:16Z"
+      },
+      "users": [
+        {
+          "id": 1832448,
+          "type": 0
+        }
+      ],
+      "devices": [
+        {
+          "device": {
+            "id": 1937110,
+            "serial": null,
+            "uniqueId": "1F300986-73DB-4EBC-AD9D-45B30993AB07",
+            "family": 1,
+            "name": "Twink",
+            "firmware": "2.9.1",
+            "ip": "192.168.178.34",
+            "fps": 12.0,
+            "capacity": 2536,
+            "networkMode": 1,
+            "disabled": null,
+            "hwVersion": "308",
+            "meta": null,
+            "prodTs": 1720694637,
+            "productCode": "TWS400SPP",
+            "mac": "c0:49:ef:2a:11:b9",
+            "ledCount": 400,
+            "ledProfile": "RGBW",
+            "ownerId": 1822617,
+            "password": {},
+            "created": "2025-11-22T17:18:11Z",
+            "updated": "2025-11-22T17:18:22Z"
+          },
+          "part": 0,
+          "type": null
+        }
+      ],
+      "uuid": "0338fdc1-a063-463e-9780-f36c7cbdc6a5",
+      "caps": [
+        {
+          "name": "Assistant",
+          "properties": {
+            "supported": [
+              "alexa",
+              "google",
+              "homey"
+            ]
+          }
+        },
+        {
+          "name": "LocalControl",
+          "properties": {
+            "controls": [
+              "powerSet",
+              "brightnessSet",
+              "movieSet",
+              "movieUpdate",
+              "playlistSet",
+              "playlistUpdate",
+              "firmwareUpdate",
+              "colorSet"
+            ]
+          }
+        },
+        {
+          "name": "RemoteControl",
+          "properties": {
+            "controls": [
+              "powerSet",
+              "movieSet",
+              "brightnessSet",
+              "colorSet"
+            ]
+          }
+        },
+        {
+          "name": "RetailCommand",
+          "properties": {}
+        },
+        {
+          "name": "Scene",
+          "properties": {
+            "modes": [
+              "movie",
+              "preset",
+              "off",
+              "color"
+            ]
+          }
+        }
+      ],
+      "meta": "{}",
+      "installation": {
+        "id": 1469108,
+        "name": "Sweet Home"
+      },
+      "palette": [],
+      "created": "2025-11-23T00:09:14Z",
+      "updated": "2025-11-23T00:28:16Z"
+    }
+  ],
+  "count": 1,
+  "next_page": null,
+  "prev_page": null
+}
