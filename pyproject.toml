@@ -1,0 +1,11 @@
+[project]
+name = "TwinkLink"
+version = "0.1.0"
+description = "Controll Twinkly lights form chromatik"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "xled>=0.6.0",
+    "sacn>=1.9.0",
+    "requests>=2.31.0",
+]

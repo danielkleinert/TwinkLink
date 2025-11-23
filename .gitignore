@@ -1,0 +1,9 @@
+# IDE and Editor directories
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Python
+.venv
