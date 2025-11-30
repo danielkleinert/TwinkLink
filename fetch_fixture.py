@@ -91,31 +91,31 @@ def sanitize_filename(name: str) -> str:
 
 def save_fixture(coords: List[Dict[str, float]], output_path: str, device_info: Dict[str, Any], aspect_xy: float = 1.0, aspect_xz: float = 1.0):
     scale = 100
+    # Transform coordinates
+    transformed_coords = []
+    for pt in coords:
+        transformed_coords.append([
+            pt['x'] * scale,
+            pt['y'] * scale / aspect_xy * 2,
+            pt['z'] * scale / aspect_xz * -1
+        ])
+        
+    json_coords_str = json.dumps(transformed_coords)
+    
+    ip_address = device_info.get('ip')
+
     fixture = {
         "label": device_info.get('name') or "Twinkly",
         "tags": [v for v in [(device_info.get('name')), device_info.get('ledProfile'), device_info.get('productCode')] if v],
         "components": [
             {
-                "type": "points",
-                "coords": [
-                    {
-                        "x": pt['x'] * scale,
-                        "y": pt['y'] * scale / aspect_xy * 2,
-                        "z": pt['z'] * scale / aspect_xz * -1
-                    }
-                    for pt in coords
-                ]
-            }
-        ],
-        "outputs": [
-            {
-                "protocol": "sacn",
-                "host": '127.0.0.1',
-                "universe": 1,
-                "start": 0,
-                "num": device_info['ledCount'],
-                "reverse": False,
-                "byteOrder": "wrgb"
+                "type": "class",
+                "class": "io.twinklink.TwinklyFixture",
+                "parameters": {
+                    "ipAddress": ip_address,
+                    "jsonCoords": json_coords_str,
+                    "ledProfile": device_info.get('ledProfile', 'RGB')
+                }
             }
         ],
         "meta": {k: str(v) for k, v in device_info.items()}
