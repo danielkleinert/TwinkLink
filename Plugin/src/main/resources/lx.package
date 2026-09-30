@@ -2,6 +2,7 @@
   name: "TwinkLink",
   mediaDir: "TwinkLink",
   author: "Daniel Kleinert",
+  url: "https://github.com/danielkleinert/TwinkLink",
   
   build: {
     name: "@project.name@",

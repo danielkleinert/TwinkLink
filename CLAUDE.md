@@ -23,6 +23,8 @@ mvn clean install -P install
 ```
 This copies the JAR to `~/Chromatik/Packages`. Chromatik must be restarted to load it; check `~/Chromatik/Logs` for the `buildTimestamp` of the loaded package.
 
+**Release:** push a `v*` tag; `.github/workflows/release.yml` sets the Maven version from the tag and publishes a GitHub release with the JAR. `.github/workflows/build.yml` builds every push and PR.
+
 ## Architecture
 
 All classes are in `Plugin/src/main/kotlin/io/twinklink/`:

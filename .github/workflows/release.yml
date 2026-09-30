@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Plugin
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: Plugin/pom.xml
+
+      - name: Set version from tag
+        run: mvn -B versions:set -DnewVersion="${GITHUB_REF_NAME#v}" -DgenerateBackupPoms=false
+
+      - name: Build plugin
+        run: mvn -B clean package
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "target/twinklink-${GITHUB_REF_NAME#v}.jar" --title "TwinkLink $GITHUB_REF_NAME" --generate-notes
