@@ -28,7 +28,7 @@ class TwinklyOutput(
 
     init {
         if (parentFixture.enabled.isOn) start()
-        enabledListener = LXParameterListener { p: LXParameter? ->
+        enabledListener = LXParameterListener { p: LXParameter ->
             if (parentFixture.enabled.isOn) start() else stop()
         }
         parentFixture.enabled.addListener(enabledListener)
@@ -75,18 +75,10 @@ class TwinklyOutput(
     override fun dispose() {
         unregisterOutput(this)
         parentFixture.enabled.removeListener(enabledListener)
-
         runBlocking {
-            scope.launch {
-                try {
-                    api.setBrightness(originalBrightness)
-                    api.setMode(originalMode ?: "off")
-                } catch (e: Exception) {
-                    LX.error(e, "Error stopping Twinkly output")
-                }
-            }.join()
+            api.setBrightness(originalBrightness)
+            api.setMode(originalMode ?: "off")
         }
-
         scope.cancel()
         api.dispose()
         super.dispose()

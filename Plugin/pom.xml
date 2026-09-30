@@ -44,6 +44,20 @@
             <version>${lx.version}</version>
             <scope>provided</scope>
         </dependency>
+        <!-- UI classes for UIFixtureControls. 1.2.1 is the closest published version to Chromatik's
+             bundled 1.2.0; exclude its lx so the plugin compiles against the lx.version above. -->
+        <dependency>
+            <groupId>com.heronarts</groupId>
+            <artifactId>glxstudio</artifactId>
+            <version>1.2.1</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.heronarts</groupId>
+                    <artifactId>lx</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>

@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
 import heronarts.lx.LX
 import kotlinx.coroutines.*
+import kotlinx.coroutines.future.await
 import java.io.IOException
 import java.net.*
 import java.net.http.HttpClient
@@ -12,9 +13,12 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
-import java.time.Duration
 import java.util.*
 import kotlin.math.min
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.toJavaDuration
 
 class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
     private val host: String = "http://$ipAddress"
@@ -25,10 +29,9 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .version(HttpClient.Version.HTTP_1_1)
-        .connectTimeout(Duration.ofSeconds(2))
+        .connectTimeout(2.seconds.toJavaDuration())
         .build()
     private val buffer = ByteArray(1 + 8 + 2 + 1 + V3_MAX_CHUNK_SIZE)
     private val socket: DatagramSocket = try {
@@ -39,7 +42,19 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
 
     private var authToken: String? = null
     private var decodedAuthToken = ByteArray(8)
-    private var tokenExpiresAt: Long = 0
+    private var refreshJob: Job? = null
+
+    private fun scheduleTokenRefresh(expiresIn: Duration) {
+        refreshJob?.cancel()
+        refreshJob = scope.launch {
+            delay((expiresIn - 1.minutes).inWholeMilliseconds)
+            try {
+                authenticate()
+            } catch (e: Exception) {
+                LX.error(e, "Failed to proactively refresh Twinkly token")
+            }
+        }
+    }
 
     suspend fun authenticate() {
         // 1. Login
@@ -60,7 +75,7 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
         post("/xled/v1/verify", verifyPayload)
 
         decodedAuthToken = Base64.getDecoder().decode(authToken)
-        tokenExpiresAt = System.currentTimeMillis() + (expiresIn * 1000L) - 5000 // 5s buffer
+        scheduleTokenRefresh(expiresIn.seconds)
     }
 
     suspend fun getMode(): String {
@@ -88,7 +103,7 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
     }
 
 
-    private suspend fun get(path: String): JsonObject = withContext(Dispatchers.IO) {
+    private suspend fun get(path: String): JsonObject {
         try {
             val request = HttpRequest.newBuilder()
                 .uri(URI.create(host + path))
@@ -96,17 +111,17 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
                 .GET()
                 .build()
 
-            val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            val response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
             if (response.statusCode() !in 200..299) {
                 LX.error("GET $path returned HTTP ${response.statusCode()}: ${response.body()}")
             }
-            gson.fromJson(response.body(), JsonObject::class.java)
+            return gson.fromJson(response.body(), JsonObject::class.java)
         } catch (e: Exception) {
             throw RuntimeException("GET request failed for $path", e)
         }
     }
 
-    private suspend fun post(path: String, payload: JsonObject): JsonObject = withContext(Dispatchers.IO) {
+    private suspend fun post(path: String, payload: JsonObject): JsonObject {
         try {
             val json = gson.toJson(payload)
 
@@ -117,11 +132,11 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
 
             authToken?.let { builder.header("X-Auth-Token", it) }
 
-            val response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+            val response = httpClient.sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString()).await()
             if (response.statusCode() !in 200..299) {
                 LX.error("POST $path returned HTTP ${response.statusCode()}: ${response.body()}")
             }
-            gson.fromJson(response.body(), JsonObject::class.java)
+            return gson.fromJson(response.body(), JsonObject::class.java)
         } catch (e: Exception) {
             throw RuntimeException("POST request failed for $path", e)
         }
@@ -194,6 +209,7 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
     }
 
     fun dispose() {
+        refreshJob?.cancel()
         scope.cancel()
         socket.takeUnless { it.isClosed }?.close()
     }
