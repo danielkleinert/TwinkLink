@@ -9,6 +9,8 @@ import heronarts.lx.structure.LXFixture
 import io.twinklink.TwinkLink.Companion.registerOutput
 import io.twinklink.TwinkLink.Companion.unregisterOutput
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class TwinklyOutput(
     lx: LX?,
@@ -22,6 +24,8 @@ class TwinklyOutput(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var originalMode: String? = null
     private var originalBrightness: Int = 50
+    /** Serializes start and restore, which each span several device requests. */
+    private val deviceLock = Mutex()
 
     private val enabledListener: LXParameterListener
     private val buffer: ByteArray = ByteArray(indexBuffer.numChannels)
@@ -47,27 +51,36 @@ class TwinklyOutput(
 
     private fun start() {
         scope.launch {
-            try {
-                api.authenticate()
-                if (originalMode == null) {
-                    originalMode = api.getMode()
-                    originalBrightness = api.getBrightness()
+            deviceLock.withLock {
+                try {
+                    api.authenticate()
+                    if (originalMode == null) {
+                        // A device still in "rt" was left there by an earlier session that didn't restore it
+                        originalMode = api.getMode().takeUnless { it == "rt" } ?: "movie"
+                        originalBrightness = api.getBrightness()
+                    }
+                    api.setMode("rt")
+                    api.setBrightness(100)
+                } catch (e: Exception) {
+                    LX.error(e, "Error starting Twinkly output")
                 }
-                api.setMode("rt")
-                api.setBrightness(100)
-            } catch (e: Exception) {
-                LX.error(e, "Error starting Twinkly output")
             }
         }
     }
 
     private fun stop() {
-        scope.launch {
+        scope.launch { restore() }
+    }
+
+    /** Waits for a start in flight, so the original state has been read before it is restored. */
+    private suspend fun restore() {
+        deviceLock.withLock {
+            val mode = originalMode ?: return
             try {
                 api.setBrightness(originalBrightness)
-                api.setMode(originalMode ?: "off")
+                api.setMode(mode)
             } catch (e: Exception) {
-                LX.error(e, "Error stopping Twinkly output")
+                LX.error(e, "Error restoring Twinkly mode")
             }
         }
     }
@@ -75,10 +88,7 @@ class TwinklyOutput(
     override fun dispose() {
         unregisterOutput(this)
         parentFixture.enabled.removeListener(enabledListener)
-        runBlocking {
-            api.setBrightness(originalBrightness)
-            api.setMode(originalMode ?: "off")
-        }
+        runBlocking { restore() }
         scope.cancel()
         api.dispose()
         super.dispose()
