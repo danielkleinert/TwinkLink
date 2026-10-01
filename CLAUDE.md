@@ -8,7 +8,7 @@ TwinkLink is a Kotlin plugin for Chromatik (LX) that drives Twinkly LED devices 
 
 ## Build Commands
 
-Requires a Java 21 JDK (`JAVA_HOME`).
+Requires a Java 25 JDK (`JAVA_HOME`).
 
 **Build the plugin:**
 ```bash
@@ -63,10 +63,10 @@ All classes are in `Plugin/src/main/kotlin/io/twinklink/`:
 
 ## Dependencies
 
-- **Kotlin stdlib 2.0.21, kotlinx-coroutines 1.9.0** - Shaded into the JAR (not relocated)
-- **LX 1.2.0, glxstudio** (HeronArts) - Provided by the Chromatik runtime; glxstudio is compiled against 1.2.1, the closest published version to Chromatik's bundled 1.2.0
+- **Kotlin stdlib 2.4.20, kotlinx-coroutines 1.11.0** - Shaded into the JAR (not relocated)
+- **LX, glxstudio 1.2.2** (HeronArts) - Provided by the Chromatik runtime; keep `lx.version` in line with the installed Chromatik
 - **GSON** - Provided by the Chromatik runtime
-- **Java 21**
+- **Java 25** - the runtime bundled with Chromatik 1.2.2
 
 ## Plugin Registration
 

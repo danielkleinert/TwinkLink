@@ -11,13 +11,13 @@
     <description>Twinkly output plugin for Chromatik (LX)</description>
 
     <properties>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <kotlin.version>2.0.21</kotlin.version>
-        <kotlin.jvm.target>21</kotlin.jvm.target>
-        <kotlinx-coroutines.version>1.9.0</kotlinx-coroutines.version>
-        <lx.version>1.2.0</lx.version>
+        <kotlin.version>2.4.20</kotlin.version>
+        <kotlin.jvm.target>25</kotlin.jvm.target>
+        <kotlinx-coroutines.version>1.11.0</kotlinx-coroutines.version>
+        <lx.version>1.2.2</lx.version>
         <maven-assembly-plugin.version>3.1.0</maven-assembly-plugin.version>
         <exec-maven-plugin.version>1.6.0</exec-maven-plugin.version>
         <maven-javadoc-plugin.version>3.2.0</maven-javadoc-plugin.version>
@@ -44,19 +44,12 @@
             <version>${lx.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!-- UI classes for UIFixtureControls. 1.2.1 is the closest published version to Chromatik's
-             bundled 1.2.0; exclude its lx so the plugin compiles against the lx.version above. -->
+        <!-- UI classes for UIFixtureControls -->
         <dependency>
             <groupId>com.heronarts</groupId>
             <artifactId>glxstudio</artifactId>
-            <version>1.2.1</version>
+            <version>${lx.version}</version>
             <scope>provided</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.heronarts</groupId>
-                    <artifactId>lx</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.google.code.gson</groupId>

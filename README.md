@@ -44,7 +44,7 @@ By default the password is kept in memory only. Tick **Save password** to store 
 
 ## Building from source
 
-Requires a Java 21 JDK.
+Requires a Java 25 JDK.
 
 ```bash
 cd Plugin
