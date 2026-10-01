@@ -11,6 +11,7 @@ import io.twinklink.TwinkLink.Companion.unregisterOutput
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.time.Duration.Companion.seconds
 
 class TwinklyOutput(
     lx: LX?,
@@ -88,9 +89,14 @@ class TwinklyOutput(
     override fun dispose() {
         unregisterOutput(this)
         parentFixture.enabled.removeListener(enabledListener)
-        runBlocking { restore() }
+        // Bounded, as it may run on quit, where an unreachable device must not hang the shutdown
+        runBlocking { withTimeoutOrNull(RESTORE_TIMEOUT) { restore() } }
         scope.cancel()
         api.dispose()
         super.dispose()
+    }
+
+    companion object {
+        private val RESTORE_TIMEOUT = 5.seconds
     }
 }
