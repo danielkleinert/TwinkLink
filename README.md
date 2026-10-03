@@ -10,6 +10,7 @@ Map your lights in the Twinkly app, pick the layout inside Chromatik, and every 
 - **Layouts from your Twinkly account**: sign in from the fixture panel and pick a layout, no export step
 - **Realtime output** over the local network using Twinkly's UDP protocol, with the protocol version chosen automatically from the device firmware
 - **Restores the device** to its previous mode and brightness when output stops
+- **Movies on the device**: see the stored movies and the storage they use, play or stop them, and delete the last one
 - **Works offline** once set up: the chosen layout is saved in the Chromatik project
 
 ## Requirements
@@ -27,13 +28,17 @@ Map your lights in the Twinkly app, pick the layout inside Chromatik, and every 
 ## Usage
 
 1. In the fixture list, add a **Twinkly** fixture and select it.
-2. In **Twinkly Account**, enter the email and password of your Twinkly app account and click **Load Layouts**.
-3. In **Twinkly Layout**, choose a layout. The fixture takes its LED positions, the device IP and the LED type from it, and starts sending to the device.
+2. In **Account**, enter the email and password of your Twinkly app account and click **Load Layouts**.
+3. In **Layout**, choose a layout. The fixture takes its LED positions, the device IP and the LED type from it, and starts sending to the device.
 4. Position, rotate and scale the fixture in the **Geometry** section as with any other fixture.
 
 The login is only needed to load layouts. After a restart the fixture keeps working with the saved layout; sign in again only to switch layouts or to pick up changes made in the Twinkly app, such as a new IP address or a re-mapped layout.
 
 By default the password is kept in memory only. Tick **Save password** to store it with the project; it is then written to the project file in plain text.
+
+### Movies
+
+The **Movies** section lists the movies stored on the device, with their length, and a meter of the storage they use. ▶ plays a movie on the device and disables the fixture, which would otherwise keep streaming over it; ▶ on the playing movie switches the device off. **Delete Last** removes the most recently stored movie: like the Twinkly app, the device can only delete its last one. Managing movies needs firmware 2.5.6 or newer.
 
 ### Notes
 

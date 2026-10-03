@@ -12,7 +12,6 @@ import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.zip.GZIPInputStream
 
-/** Shared Gson for Twinkly Cloud data. */
 internal val gson = GsonBuilder().disableHtmlEscaping().create()
 
 private fun JsonObject.opt(key: String): JsonElement? = get(key)?.takeUnless { it.isJsonNull }
@@ -73,21 +72,29 @@ class DeviceFacade(deviceObj: JsonObject) {
     val ledProfile: String = deviceObj.opt("ledProfile")?.asString ?: "RGB"
     val byteOrder: ByteOrder = if (ledProfile == "RGBW") ByteOrder.WRGB else ByteOrder.RGB
 
+    /** Firmware version as major, minor, patch; all 0 when the cloud doesn't report it. */
+    private val firmware: List<Int> = (deviceObj.opt("firmware")?.asString ?: "")
+        .split(".").map { it.toIntOrNull() ?: 0 }
+        .let { (it + listOf(0, 0, 0)).take(3) }
+
+    private val firmwareKnown = firmware[0] != 0
+
+    private fun firmwareAtLeast(major: Int, minor: Int, patch: Int): Boolean =
+        compareValuesBy(firmware, listOf(major, minor, patch), { it[0] }, { it[1] }, { it[2] }) >= 0
+
     /**
      * Realtime UDP protocol matching the firmware, following xled: Generation I devices
      * (firmware 1.x) use v1, Generation II before 2.4.14 uses v2, newer firmware uses v3.
      */
-    val protocolVersion: Int = (deviceObj.opt("firmware")?.asString ?: "")
-        .split(".").map { it.toIntOrNull() ?: 0 }
-        .let { v ->
-            val (major, minor, patch) = v + listOf(0, 0, 0)
-            when {
-                major == 0 -> 3 // Unknown firmware, v3 is supported by all current devices
-                major < 2 -> 1
-                major == 2 && (minor < 4 || (minor == 4 && patch < 14)) -> 2
-                else -> 3
-            }
-        }
+    val protocolVersion: Int = when {
+        !firmwareKnown -> 3 // Unknown firmware, v3 is supported by all current devices
+        !firmwareAtLeast(2, 0, 0) -> 1
+        !firmwareAtLeast(2, 4, 14) -> 2
+        else -> 3
+    }
+
+    /** Storing several movies needs firmware 2.5.6; unknown firmware is assumed to be current. */
+    val supportsMovies: Boolean = !firmwareKnown || firmwareAtLeast(2, 5, 6)
 }
 
 /** Parses the /v3/objects response, skipping objects that are not usable layouts. */

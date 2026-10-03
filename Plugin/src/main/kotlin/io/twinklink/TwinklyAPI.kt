@@ -1,11 +1,11 @@
 package io.twinklink
 
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
 import heronarts.lx.LX
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 import java.net.*
 import java.net.http.HttpClient
@@ -40,7 +40,8 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
         throw RuntimeException("Failed to create UDP socket", e)
     }
 
-    private var authToken: String? = null
+    private val authMutex = Mutex()
+    @Volatile private var authToken: String? = null
     private var decodedAuthToken = ByteArray(8)
     private var refreshJob: Job? = null
 
@@ -56,30 +57,36 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
         }
     }
 
-    suspend fun authenticate() {
-        // 1. Login
+    private suspend fun authenticate() = authMutex.withLock { login() }
+
+    private suspend fun login() {
         val loginPayload = JsonObject()
         val challenge = ByteArray(32)
         SecureRandom().nextBytes(challenge)
         val challengeB64 = Base64.getEncoder().encodeToString(challenge)
         loginPayload.addProperty("challenge", challengeB64)
 
-        val loginResponse = post("/xled/v1/login", loginPayload)
-        authToken = loginResponse.get("authentication_token").asString
+        val loginResponse = send("POST", "/xled/v1/login", loginPayload, retryAuth = false)
+        val token = loginResponse.get("authentication_token").asString
         val challengeResponse = loginResponse.get("challenge-response").asString
         val expiresIn = loginResponse.get("authentication_token_expires_in").asInt
 
-        // 2. Verify
+        authToken = token
         val verifyPayload = JsonObject()
         verifyPayload.addProperty("challenge-response", challengeResponse)
-        post("/xled/v1/verify", verifyPayload)
+        send("POST", "/xled/v1/verify", verifyPayload, retryAuth = false)
 
-        decodedAuthToken = Base64.getDecoder().decode(authToken)
+        decodedAuthToken = Base64.getDecoder().decode(token)
         scheduleTokenRefresh(expiresIn.seconds)
     }
 
+    /** Logs in again after [failedToken] was rejected, unless a concurrent request already did. */
+    private suspend fun reauthenticate(failedToken: String?) = authMutex.withLock {
+        if (authToken == failedToken) login()
+    }
+
     suspend fun getMode(): String {
-        val response = get("/xled/v1/led/mode")
+        val response = send("GET", "/xled/v1/led/mode")
         return response.get("mode")?.asString
             ?: throw IllegalStateException("No mode in response")
     }
@@ -87,11 +94,11 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
     suspend fun setMode(mode: String) {
         val payload = JsonObject()
         payload.addProperty("mode", mode)
-        post("/xled/v1/led/mode", payload)
+        send("POST", "/xled/v1/led/mode", payload)
     }
 
     suspend fun getBrightness(): Int {
-        val response = get("/xled/v1/led/out/brightness")
+        val response = send("GET", "/xled/v1/led/out/brightness")
         return response.get("value")?.asInt
             ?: throw IllegalStateException("No brightness in response")
     }
@@ -99,47 +106,83 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
     suspend fun setBrightness(value: Int) {
         val payload = JsonObject()
         payload.addProperty("value", value)
-        post("/xled/v1/led/out/brightness", payload)
+        send("POST", "/xled/v1/led/out/brightness", payload)
     }
 
-
-    private suspend fun get(path: String): JsonObject {
-        try {
-            val request = HttpRequest.newBuilder()
-                .uri(URI.create(host + path))
-                .header("X-Auth-Token", authToken)
-                .GET()
-                .build()
-
-            val response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
-            if (response.statusCode() !in 200..299) {
-                LX.error("GET $path returned HTTP ${response.statusCode()}: ${response.body()}")
-            }
-            return gson.fromJson(response.body(), JsonObject::class.java)
-        } catch (e: Exception) {
-            throw RuntimeException("GET request failed for $path", e)
+    /** Movies stored on the device, since firmware 2.5.6. */
+    suspend fun getMovies(): MovieList {
+        val response = send("GET", "/xled/v1/movies")
+        val movies = response.getAsJsonArray("movies").map {
+            val m = it.asJsonObject
+            Movie(
+                id = m.get("id").asInt,
+                name = m.get("name").asString,
+                uniqueId = m.get("unique_id").asString,
+                frames = m.get("frames_number").asInt,
+                fps = m.get("fps").asInt
+            )
         }
+        return MovieList(
+            movies,
+            availableFrames = response.get("available_frames").asInt,
+            maxCapacity = response.get("max_capacity").asInt,
+            maxMovies = response.get("max")?.asInt
+        )
     }
 
-    private suspend fun post(path: String, payload: JsonObject): JsonObject {
-        try {
-            val json = gson.toJson(payload)
+    suspend fun getCurrentMovieId(): Int? = send("GET", "/xled/v1/movies/current").get("id")?.asInt
 
+    suspend fun setCurrentMovie(id: Int) {
+        val payload = JsonObject()
+        payload.addProperty("id", id)
+        send("POST", "/xled/v1/movies/current", payload)
+    }
+
+    /** Not in the xled docs, captured from the Twinkly app, which only offers it for the last movie. */
+    suspend fun deleteMovie(uniqueId: String) {
+        send("DELETE", "/xled/v1/movies/$uniqueId")
+    }
+
+    /**
+     * Sends an HTTP request with the current token, logging in first if there is none. A rejected token was replaced
+     * by another client's login (the device keeps a single one), so the request is repeated once after logging in again.
+     */
+    private suspend fun send(method: String, path: String, payload: JsonObject? = null, retryAuth: Boolean = true): JsonObject {
+        if (retryAuth && authToken == null) reauthenticate(null)
+        val token = authToken
+        val response = try {
             val builder = HttpRequest.newBuilder()
                 .uri(URI.create(host + path))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
-
-            authToken?.let { builder.header("X-Auth-Token", it) }
-
-            val response = httpClient.sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString()).await()
-            if (response.statusCode() !in 200..299) {
-                LX.error("POST $path returned HTTP ${response.statusCode()}: ${response.body()}")
+                .timeout(REQUEST_TIMEOUT.toJavaDuration())
+            if (payload != null) {
+                builder.header("Content-Type", "application/json")
+                builder.method(method, HttpRequest.BodyPublishers.ofString(gson.toJson(payload), StandardCharsets.UTF_8))
+            } else {
+                builder.method(method, HttpRequest.BodyPublishers.noBody())
             }
-            return gson.fromJson(response.body(), JsonObject::class.java)
+            token?.let { builder.header("X-Auth-Token", it) }
+            httpClient.sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString()).await()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            throw RuntimeException("POST request failed for $path", e)
+            throw IOException("$method $path failed", e)
         }
+
+        if (response.statusCode() == 401 && retryAuth) {
+            reauthenticate(token)
+            return send(method, path, payload, retryAuth = false)
+        }
+        if (response.statusCode() !in 200..299) {
+            throw IOException("$method $path returned HTTP ${response.statusCode()}: ${response.body()}")
+        }
+        // Some requests answer 204 without a body
+        val body = response.body()
+        val json = if (body.isBlank()) JsonObject() else gson.fromJson(body, JsonObject::class.java)
+        val code = json.get("code")?.asInt
+        if (code != null && code != CODE_OK) {
+            throw TwinklyRefusedException("$method $path returned code $code", code)
+        }
+        return json
     }
 
     fun sendRealtimeFrame(frameData: ByteArray) {
@@ -179,7 +222,6 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
                 while (bytesSent < frameData.size) {
                     val chunkSize = min(frameData.size - bytesSent, V3_MAX_CHUNK_SIZE)
 
-                    // Build packet in buffer
                     var offset = 0
                     buffer[offset++] = 0x03
                     System.arraycopy(decodedAuthToken, 0, buffer, offset, 8)
@@ -211,15 +253,18 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
     fun dispose() {
         refreshJob?.cancel()
         scope.cancel()
+        // Frees its kept-alive connections, as the device's HTTP server accepts only a few
+        httpClient.shutdownNow()
         socket.takeUnless { it.isClosed }?.close()
     }
 
     companion object {
         private const val RT_PORT = 7777
         private const val V3_MAX_CHUNK_SIZE = 900
-
-        private val gson: Gson = GsonBuilder()
-            .disableHtmlEscaping()
-            .create()
+        private const val CODE_OK = 1000
+        private val REQUEST_TIMEOUT = 10.seconds
     }
 }
+
+/** The device answered a request with an application error code. */
+class TwinklyRefusedException(message: String, val code: Int) : IOException(message)

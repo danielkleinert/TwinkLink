@@ -8,43 +8,41 @@ class TwinkLink : LXPlugin {
     }
 
     override fun dispose() {
-        disposeOutputs()
+        disposeDevices()
     }
 
     companion object {
-        private val outputs = mutableListOf<TwinklyOutput>()
+        private val devices = mutableListOf<TwinklyDevice>()
 
         /**
          * Chromatik disposes fixtures when they are removed or a project is closed, but not on quit, and drops plugin instances without disposing them when it
-         * reloads packages, so outputs restore their devices from a JVM shutdown hook as well.
+         * reloads packages, so devices are restored from a JVM shutdown hook as well.
          */
         private val shutdownHook by lazy {
-            Runtime.getRuntime().addShutdownHook(Thread(::disposeOutputs, "TwinkLink shutdown"))
+            Runtime.getRuntime().addShutdownHook(Thread(::disposeDevices, "TwinkLink shutdown"))
         }
 
-        private fun disposeOutputs() {
-            val outputsCopy = synchronized(outputs) {
-                outputs.toList().also { outputs.clear() }
+        private fun disposeDevices() {
+            val devicesCopy = synchronized(devices) {
+                devices.toList().also { devices.clear() }
             }
 
-            for (output in outputsCopy) {
+            for (device in devicesCopy) {
                 try {
-                    output.dispose()
+                    device.dispose()
                 } catch (e: Exception) {
-                    LX.error(e, "TwinklyPlugin: Error disposing output")
+                    LX.error(e, "TwinkLink: Error disposing device")
                 }
             }
         }
 
-        @JvmStatic
-        fun registerOutput(output: TwinklyOutput) {
+        fun registerDevice(device: TwinklyDevice) {
             shutdownHook
-            synchronized(outputs) { outputs.add(output) }
+            synchronized(devices) { devices.add(device) }
         }
 
-        @JvmStatic
-        fun unregisterOutput(output: TwinklyOutput) {
-            synchronized(outputs) { outputs.remove(output) }
+        fun unregisterDevice(device: TwinklyDevice) {
+            synchronized(devices) { devices.remove(device) }
         }
     }
 }

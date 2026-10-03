@@ -44,6 +44,14 @@ class TwinklyFixture(lx: LX) : LXFixture(lx, "TwinklyFixture") {
     /** Summary of the selected layout's device, shown below the layout menu. */
     val layoutInfo = StringParameter("Layout Info", "")
 
+    val movies = TwinklyMovies(lx, this)
+
+    /** Session with the layout's device, kept across output rebuilds. */
+    var device: TwinklyDevice? = null
+        private set
+
+    val deviceInfo: DeviceFacade? get() = layout?.device
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var fetchedLayouts: List<LayoutFacade> = emptyList()
     private var layout: LayoutFacade? = null
@@ -66,6 +74,7 @@ class TwinklyFixture(lx: LX) : LXFixture(lx, "TwinklyFixture") {
     override fun onParameterChanged(p: LXParameter?) {
         // Parse before super, which regenerates the fixture from the parsed layout
         if (p == layoutJson) parseLayout()
+        if (p == enabled) device?.let { if (enabled.isOn) it.startStream() else it.stopStream() }
         super.onParameterChanged(p)
     }
 
@@ -144,8 +153,7 @@ class TwinklyFixture(lx: LX) : LXFixture(lx, "TwinklyFixture") {
                     if (refreshed != null) applyLayout(refreshed) else updateLayoutOptions()
                 }.onFailure { e ->
                     LX.error(e, "Error fetching Twinkly layouts")
-                    val cause = generateSequence(e) { it.cause }.last()
-                    signInMessage = "Failed: " + (cause.message ?: cause.javaClass.simpleName)
+                    signInMessage = failureText(e)
                 }
                 updateAccountStatus()
             }
@@ -173,10 +181,16 @@ class TwinklyFixture(lx: LX) : LXFixture(lx, "TwinklyFixture") {
     }
 
     override fun buildOutputs() {
-        val device = layout?.device ?: return
-        val indices = points.map { it.index }.toIntArray()
-        val output = TwinklyOutput(lx, this, indices, device.byteOrder, device.ip, device.protocolVersion)
-        addOutputDirect(output)
+        val info = deviceInfo
+        val current = device
+        if (info?.ip != current?.ip || info?.protocolVersion != current?.protocolVersion) {
+            current?.dispose()
+            device = info?.let { TwinklyDevice(it.ip, it.protocolVersion, movies::onModeChanged) }
+            if (enabled.isOn) device?.startStream()
+            movies.onDeviceChanged()
+        }
+        val d = device
+        if (d != null && info != null) addOutputDirect(TwinklyOutput(lx, d, points.map { it.index }.toIntArray(), info.byteOrder))
     }
 
     override fun save(lx: LX, obj: JsonObject) {
@@ -191,6 +205,8 @@ class TwinklyFixture(lx: LX) : LXFixture(lx, "TwinklyFixture") {
 
     override fun dispose() {
         scope.cancel()
+        movies.dispose()
+        device?.dispose()
         super.dispose()
     }
 
@@ -201,4 +217,10 @@ class TwinklyFixture(lx: LX) : LXFixture(lx, "TwinklyFixture") {
         private const val HINT_HAS_LAYOUT = "Only needed to change the layout"
         private const val KEY_PASSWORD = "twinklyPassword"
     }
+}
+
+/** A failure for a status line, from its root cause, which carries the most specific message. */
+internal fun failureText(e: Throwable): String {
+    val cause = generateSequence(e) { it.cause }.last()
+    return "Failed: " + (cause.message ?: cause.javaClass.simpleName)
 }

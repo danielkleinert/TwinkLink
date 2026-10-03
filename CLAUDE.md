@@ -29,7 +29,7 @@ This copies the JAR to `~/Chromatik/Packages`. Chromatik must be restarted to lo
 
 All classes are in `Plugin/src/main/kotlin/io/twinklink/`:
 
-**TwinkLink.kt** - Plugin lifecycle (`LXPlugin`), tracks TwinklyOutput instances and disposes them on shutdown.
+**TwinkLink.kt** - Plugin lifecycle (`LXPlugin`), tracks TwinklyDevice sessions and disposes them on shutdown, which restores the devices.
 
 **TwinklyFixture.kt** - The "Twinkly" fixture (`LXFixture`)
 - `layoutJson`: the chosen Twinkly Cloud layout object, saved with the project; LED positions, device IP, LED profile and firmware all come from it
@@ -37,9 +37,13 @@ All classes are in `Plugin/src/main/kotlin/io/twinklink/`:
 - Transient UI state: `fetch` (TriggerParameter), `layoutSelect`, `accountStatus`, `layoutInfo`
 - Fetching runs on a coroutine; results are applied on the engine thread via `lx.engine.addTask`
 - `computePointGeometry` uses `LXPoint.set(matrix, LXVector)`. Never `LXPoint.set(LXPoint)`: it copies the source point's `index`, which corrupts the model's point indices
-- Builds one TwinklyOutput for the layout's first device; the UDP protocol version is derived from its firmware
+- `device`: a TwinklyDevice session for the layout's first device, replaced only when its IP or protocol changes; `enabled` starts and stops its stream
+- Builds one TwinklyOutput per regenerate, sending through the session
+- `movies` (TwinklyMovies): the device's stored movies
 
-**UITwinklyFixture.kt** - Custom inspector controls (`UIFixtureControls<TwinklyFixture>`), auto-registered by Chromatik when the package is loaded. Sections "Twinkly Account" and "Twinkly Layout".
+**UITwinklyFixture.kt** - Custom inspector controls (`UIFixtureControls<TwinklyFixture>`), auto-registered by Chromatik when the package is loaded. Sections "Account", "Layout" and "Movies" (rebuilt from `TwinklyMovies.changed`).
+
+**TwinklyMovies.kt** - Movie list state (firmware 2.5.6+): refresh, play/stop, delete. Requests run on a coroutine; state changes on the engine thread. Playing a movie disables the fixture, as streaming would override it.
 
 **UIPasswordBox.kt** - Masked `UITextBox` for the password.
 
@@ -47,9 +51,11 @@ All classes are in `Plugin/src/main/kotlin/io/twinklink/`:
 
 **TwinklyCloudFacade.kt** - `LayoutFacade`/`DeviceFacade` wrappers around the cloud JSON; `parseLayouts()` skips objects without a usable layout. Coordinates are decoded lazily (base64 + gzip JSON).
 
-**TwinklyOutput.kt** - `LXBufferOutput` per device; switches the device to "rt" mode, restores the original mode and brightness on stop, sends frames through TwinklyAPI.
+**TwinklyDevice.kt** - Session with one device, owning its TwinklyAPI and a lock. The device accepts only one token at a time, so the stream and the movie requests all go through it. Switches the device to "rt" mode and restores the original mode and brightness when the stream stops; falls back to "off" when the device refuses movie mode with no movies left (code 1104). `dispose()` restores before returning (bounded), so a new session for the same device can't overlap it.
 
-**TwinklyAPI.kt** - Device protocol: HTTP challenge-response login and mode/brightness control, UDP realtime frames:
+**TwinklyOutput.kt** - `LXBufferOutput` that sends the fixture's colors as realtime frames through its TwinklyDevice.
+
+**TwinklyAPI.kt** - Device protocol: HTTP challenge-response login (on the first request, and again on a 401, as another client's login invalidates the token), mode/brightness control, movies, UDP realtime frames:
 - V1: single packet (Generation I, firmware 1.x)
 - V2: single packet (Generation II before firmware 2.4.14)
 - V3: 900-byte chunks with sequence numbers (firmware 2.4.14+)
@@ -77,8 +83,11 @@ All classes are in `Plugin/src/main/kotlin/io/twinklink/`:
 ## Development Notes
 
 - No test framework is configured. Logic can be checked headlessly by compiling a small Java class against Chromatik's bundled `glxstudio-*-jar-with-dependencies.jar` and the built plugin JAR, and running it with `new LX()`
+- glx calls parameter listeners on the thread that changed the parameter, often the engine thread. UI that rebuilds components in response sets a flag and rebuilds from a loop task (`addLoopTask`), which runs on the UI thread
+- glx `UI2dContainer` layouts only position children along their axis (VERTICAL sets y, HORIZONTAL sets x); cross-axis padding is ignored, so give children that offset as their own x/y, as Chromatik's fixture list does
 - `twinkly cloud recording/` contains captured Cloud API requests/responses for reference
 - Device IP addresses must be on the local network; the cloud only provides layout metadata
+- Deleting a single movie (`DELETE /xled/v1/movies/{unique_id}`) is not in the xled docs; it was captured from the Twinkly app, which only offers it for the last movie and switches movie mode off around it. `DELETE /xled/v1/movies` deletes all movies
 
 ## External References
 
