@@ -190,7 +190,9 @@ class TwinklyFixture(lx: LX) : LXFixture(lx, "TwinklyFixture") {
             movies.onDeviceChanged()
         }
         val d = device
-        if (d != null && info != null) addOutputDirect(TwinklyOutput(lx, d, points.map { it.index }.toIntArray(), info.byteOrder))
+        if (d != null && info != null) addOutputDirect(
+            TwinklyOutput(lx, d, points.map { it.index }.toIntArray(), info.byteOrder, movies::recorder)
+        )
     }
 
     override fun save(lx: LX, obj: JsonObject) {

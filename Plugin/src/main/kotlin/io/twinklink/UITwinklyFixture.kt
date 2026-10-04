@@ -1,17 +1,25 @@
 package io.twinklink
 
+import heronarts.glx.ui.UI
+import heronarts.glx.ui.UI2dComponent
 import heronarts.glx.ui.UI2dContainer
 import heronarts.glx.ui.component.UIButton
 import heronarts.glx.ui.component.UICheckbox
 import heronarts.glx.ui.component.UILabel
 import heronarts.glx.ui.component.UIMeter
 import heronarts.glx.ui.vg.VGraphics
+import heronarts.lx.parameter.BoundedParameter
 import heronarts.lx.parameter.StringParameter
 import heronarts.lx.studio.LXStudio
 import heronarts.lx.studio.ui.fixture.UIFixture
 import heronarts.lx.studio.ui.fixture.UIFixtureControls
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+
+/** Thin meters, centered in their row by position, as rows only lay out horizontally. */
+private const val METER_HEIGHT = 6f
+
+private fun meterY(rowHeight: Float) = (rowHeight - METER_HEIGHT) / 2
 
 class UITwinklyFixture : UIFixtureControls<TwinklyFixture> {
 
@@ -59,6 +67,40 @@ class UITwinklyFixture : UIFixtureControls<TwinklyFixture> {
         uiFixture.addRenderingSection()
 
         buildMoviesSection(ui, uiFixture, fixture.movies, labelWidth, controlWidth, fullWidth, rowHeight)
+        buildRecordSection(ui, uiFixture, fixture.movies, labelWidth, controlWidth, fullWidth, rowHeight)
+    }
+
+    private fun buildRecordSection(
+        ui: LXStudio.UI, uiFixture: UIFixture, movies: TwinklyMovies,
+        labelWidth: Float, controlWidth: Float, fullWidth: Float, rowHeight: Float
+    ) {
+        val section = uiFixture.addSection("Record Movie")
+        section.addControlRow(
+            uiFixture.newParameterLabel(movies.recordName.label, labelWidth),
+            uiFixture.newControlTextBox(movies.recordName, controlWidth)
+        )
+        for (parameter in listOf(movies.recordDuration, movies.recordBlend)) {
+            section.addControlRow(
+                uiFixture.newParameterLabel(parameter.label, labelWidth),
+                uiFixture.newControlBox(parameter, controlWidth)
+            )
+        }
+        section.addControlRow(
+            uiFixture.newParameterLabel(movies.recordFps.label, labelWidth),
+            uiFixture.newControlIntBox(movies.recordFps, controlWidth)
+        )
+        section.addControlRow(
+            uiFixture.newParameterLabel("Storage", labelWidth),
+            UIRecordingStorage(ui, movies, 0f, meterY(rowHeight), controlWidth, METER_HEIGHT)
+        )
+        section.addControlRow(
+            UIButton(0f, 0f, labelWidth, rowHeight, movies.recording)
+                .setActiveLabel("Cancel")
+                .setInactiveLabel("Record")
+                .setBorderRounding(ACTION_ROUNDING),
+            thinMeter(ui, movies.recordProgress, controlWidth, rowHeight)
+        )
+        statusLabel(ui, movies.recordStatus, fullWidth, rowHeight).addToContainer(section)
     }
 
     private fun buildMoviesSection(
@@ -67,12 +109,7 @@ class UITwinklyFixture : UIFixtureControls<TwinklyFixture> {
     ) {
         val section = uiFixture.addSection("Movies")
         val storageLabel = uiFixture.newParameterLabel(movies.storage.label, labelWidth)
-        // A thin meter, centered as rows only lay out horizontally
-        val meterHeight = 6f
-        section.addControlRow(
-            storageLabel,
-            UIMeter(ui, movies.storage, UIMeter.Axis.HORIZONTAL, 0f, (rowHeight - meterHeight) / 2, controlWidth, meterHeight)
-        )
+        section.addControlRow(storageLabel, thinMeter(ui, movies.storage, controlWidth, rowHeight))
         // Styled like Chromatik's item lists
         val listPadding = 4f
         val list = UI2dContainer(0f, 0f, fullWidth, 0f)
@@ -163,6 +200,9 @@ class UITwinklyFixture : UIFixtureControls<TwinklyFixture> {
         }
     }
 
+    private fun thinMeter(ui: LXStudio.UI, parameter: BoundedParameter, width: Float, rowHeight: Float) =
+        UIMeter(ui, parameter, UIMeter.Axis.HORIZONTAL, 0f, meterY(rowHeight), width, METER_HEIGHT)
+
     private fun helpLabel(
         ui: LXStudio.UI, x: Float, y: Float, width: Float, height: Float, text: String, align: VGraphics.Align,
         description: String = text
@@ -197,5 +237,67 @@ class UITwinklyFixture : UIFixtureControls<TwinklyFixture> {
         private const val BUTTON_ROUNDING = 2
         /** Like the New, Import and Export buttons of Chromatik's model pane. */
         private const val ACTION_ROUNDING = 4
+    }
+}
+
+/** Previews the storage after recording, like the Movies meter: stored movies gray, the new one green, or red if it doesn't fit. */
+private class UIRecordingStorage(ui: LXStudio.UI, private val movies: TwinklyMovies, x: Float, y: Float, w: Float, h: Float) :
+    UI2dComponent(x, y, w, h) {
+    private var used = 0f
+    private var added = 0f
+    private var fits = true
+
+    init {
+        setBorderColor(ui.theme.controlBorderColor)
+        setBackgroundColor(ui.theme.meterBackgroundColor)
+        setDescription(NOT_LOADED)
+        // Polled like UIMeter, as the fit depends on the movies and on the duration and fps
+        addLoopTask {
+            val fit = movies.recordingFit()?.takeIf { it.list.maxCapacity > 0 }
+            val u = fit?.let { it.list.usedFrames.toFloat() / it.list.maxCapacity } ?: 0f
+            val a = fit?.let { it.frames.toFloat() / it.list.maxCapacity } ?: 0f
+            val f = fit?.refusal == null
+            if (u != used || a != added || f != fits) {
+                used = u
+                added = a
+                fits = f
+                setDescription(describe(fit))
+                redraw()
+            }
+        }
+    }
+
+    private fun describe(fit: RecordingFit?): String {
+        if (fit == null) return NOT_LOADED
+        val list = fit.list
+        val after = list.usedFrames + fit.frames
+        return fit.refusal ?: "After recording: $after of ${list.maxCapacity} frames used, about ${fit.frames} for the new movie"
+    }
+
+    override fun onDraw(ui: UI, vg: VGraphics) {
+        val inner = width - 2
+        val usedPixels = inner * used.coerceIn(0f, 1f)
+        // A movie that doesn't fit stays visible even with the storage full, drawn over its end
+        val addedPixels = (inner * added).coerceAtMost(inner - usedPixels).let { if (fits) it else it.coerceAtLeast(MIN_REFUSED_PIXELS) }
+        val addedStart = (1f + usedPixels).coerceAtMost(1f + inner - addedPixels)
+        if (usedPixels > 0.5f) {
+            vg.fillColor(USED_COLOR)
+            vg.beginPath()
+            vg.rect(1f, 1f, usedPixels, height - 2)
+            vg.fill()
+        }
+        if (addedPixels > 0.5f) {
+            if (fits) vg.fillColor(FITS_COLOR) else vg.fillColor(ui.theme.errorColor)
+            vg.beginPath()
+            vg.rect(addedStart, 1f, addedPixels, height - 2)
+            vg.fill()
+        }
+    }
+
+    companion object {
+        private const val NOT_LOADED = "Refresh the movies to see the storage the recording takes"
+        private const val USED_COLOR = 0xff6e6e6e.toInt()
+        private const val FITS_COLOR = 0xff3fae4a.toInt()
+        private const val MIN_REFUSED_PIXELS = 3f
     }
 }

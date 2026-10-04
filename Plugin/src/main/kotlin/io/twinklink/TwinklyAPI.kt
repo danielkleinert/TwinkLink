@@ -130,6 +130,9 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
         )
     }
 
+    /** The rate the device shows frames at; movies stored faster play stretched to it. */
+    suspend fun getFrameRate(): Double? = send("GET", "/xled/v1/gestalt").get("frame_rate")?.asDouble
+
     suspend fun getCurrentMovieId(): Int? = send("GET", "/xled/v1/movies/current").get("id")?.asInt
 
     suspend fun setCurrentMovie(id: Int) {
@@ -143,20 +146,45 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
         send("DELETE", "/xled/v1/movies/$uniqueId")
     }
 
+    /** Creates a movie entry to upload frames to, like xled_plus; returns its id. */
+    suspend fun createMovie(name: String, uniqueId: String, descriptorType: String, ledsPerFrame: Int, frames: Int, fps: Int): Int {
+        val payload = JsonObject()
+        payload.addProperty("name", name)
+        payload.addProperty("unique_id", uniqueId)
+        payload.addProperty("descriptor_type", descriptorType)
+        payload.addProperty("leds_per_frame", ledsPerFrame)
+        payload.addProperty("frames_number", frames)
+        payload.addProperty("fps", fps)
+        return send("POST", "/xled/v1/movies/new", payload).get("id").asInt
+    }
+
+    /** Uploads the frames of the movie created last, laid out like realtime frames. The device stores them slowly. */
+    suspend fun uploadMovieFrames(frames: ByteArray) {
+        val timeout = REQUEST_TIMEOUT + (frames.size / UPLOAD_BYTES_PER_SECOND).seconds
+        send("POST", "/xled/v1/movies/full", Body("application/octet-stream", frames), timeout = timeout)
+    }
+
+    private class Body(val contentType: String, val bytes: ByteArray)
+
+    private suspend fun send(method: String, path: String, payload: JsonObject? = null, retryAuth: Boolean = true): JsonObject =
+        send(method, path, payload?.let { Body("application/json", gson.toJson(it).toByteArray(StandardCharsets.UTF_8)) }, retryAuth)
+
     /**
      * Sends an HTTP request with the current token, logging in first if there is none. A rejected token was replaced
      * by another client's login (the device keeps a single one), so the request is repeated once after logging in again.
      */
-    private suspend fun send(method: String, path: String, payload: JsonObject? = null, retryAuth: Boolean = true): JsonObject {
+    private suspend fun send(
+        method: String, path: String, body: Body?, retryAuth: Boolean = true, timeout: Duration = REQUEST_TIMEOUT
+    ): JsonObject {
         if (retryAuth && authToken == null) reauthenticate(null)
         val token = authToken
         val response = try {
             val builder = HttpRequest.newBuilder()
                 .uri(URI.create(host + path))
-                .timeout(REQUEST_TIMEOUT.toJavaDuration())
-            if (payload != null) {
-                builder.header("Content-Type", "application/json")
-                builder.method(method, HttpRequest.BodyPublishers.ofString(gson.toJson(payload), StandardCharsets.UTF_8))
+                .timeout(timeout.toJavaDuration())
+            if (body != null) {
+                builder.header("Content-Type", body.contentType)
+                builder.method(method, HttpRequest.BodyPublishers.ofByteArray(body.bytes))
             } else {
                 builder.method(method, HttpRequest.BodyPublishers.noBody())
             }
@@ -170,7 +198,7 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
 
         if (response.statusCode() == 401 && retryAuth) {
             reauthenticate(token)
-            return send(method, path, payload, retryAuth = false)
+            return send(method, path, body, retryAuth = false, timeout = timeout)
         }
         if (response.statusCode() !in 200..299) {
             throw IOException("$method $path returned HTTP ${response.statusCode()}: ${response.body()}")
@@ -263,6 +291,8 @@ class TwinklyAPI(ipAddress: String, private val protocolVersion: Int) {
         private const val V3_MAX_CHUNK_SIZE = 900
         private const val CODE_OK = 1000
         private val REQUEST_TIMEOUT = 10.seconds
+        /** A third of the rate a TWS400STP stored a movie at (864 KB in 15 s). */
+        private const val UPLOAD_BYTES_PER_SECOND = 20_000
     }
 }
 

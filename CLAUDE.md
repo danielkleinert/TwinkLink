@@ -41,9 +41,11 @@ All classes are in `Plugin/src/main/kotlin/io/twinklink/`:
 - Builds one TwinklyOutput per regenerate, sending through the session
 - `movies` (TwinklyMovies): the device's stored movies
 
-**UITwinklyFixture.kt** - Custom inspector controls (`UIFixtureControls<TwinklyFixture>`), auto-registered by Chromatik when the package is loaded. Sections "Account", "Layout" and "Movies" (rebuilt from `TwinklyMovies.changed`).
+**UITwinklyFixture.kt** - Custom inspector controls (`UIFixtureControls<TwinklyFixture>`), auto-registered by Chromatik when the package is loaded. Sections "Account", "Layout", "Movies" (rebuilt from `TwinklyMovies.changed`) and "Record Movie", whose storage bar (`UIRecordingStorage`) polls `TwinklyMovies.recordingFit()`.
 
-**TwinklyMovies.kt** - Movie list state (firmware 2.5.6+): refresh, play/stop, delete. Requests run on a coroutine; state changes on the engine thread. Playing a movie disables the fixture, as streaming would override it.
+**TwinklyMovies.kt** - Movie list state (firmware 2.5.6+): refresh, play/stop, delete, record. Requests run on a coroutine; state changes on the engine thread. Playing a movie disables the fixture, as streaming would override it. Recording enables the fixture, attaches a MovieRecorder that TwinklyOutput feeds, polls it from an engine loop task and uploads the movie once complete; the fits-check allows `MOVIE_OVERHEAD` frames per movie.
+
+**MovieRecorder.kt** - Records the frames TwinklyOutput sends, which it encodes a second time without the master brightness (`lx.engine.output.brightness`) while recording, as movies play at the device's brightness; brightness applies before gamma, so encoding again is exact where scaling the bytes isn't. Frames are sampled by time at the movie's fps, as the engine runs faster. The `recordFps` setting is capped at the device's `frame_rate` from `/xled/v1/gestalt` (12.8 → 12, the Twinkly app's rate; a movie stored at 24 fps played stretched at ~12 fps), read once per session with the movie state, and follows it while set to the maximum; Chromatik's engine fps is project-wide, so it is left alone. Records the loop blend beyond the movie's end and fades it into the start: `M[t] = lerp(rec[frames + t], rec[t], t / blendFrames)`.
 
 **UIPasswordBox.kt** - Masked `UITextBox` for the password.
 
@@ -53,7 +55,7 @@ All classes are in `Plugin/src/main/kotlin/io/twinklink/`:
 
 **TwinklyDevice.kt** - Session with one device, owning its TwinklyAPI and a lock. The device accepts only one token at a time, so the stream and the movie requests all go through it. Switches the device to "rt" mode and restores the original mode and brightness when the stream stops; falls back to "off" when the device refuses movie mode with no movies left (code 1104). `dispose()` restores before returning (bounded), so a new session for the same device can't overlap it.
 
-**TwinklyOutput.kt** - `LXBufferOutput` that sends the fixture's colors as realtime frames through its TwinklyDevice.
+**TwinklyOutput.kt** - `LXBufferOutput` that sends the fixture's colors as realtime frames through its TwinklyDevice, and offers them to a running MovieRecorder (possibly on the network thread).
 
 **TwinklyAPI.kt** - Device protocol: HTTP challenge-response login (on the first request, and again on a 401, as another client's login invalidates the token), mode/brightness control, movies, UDP realtime frames:
 - V1: single packet (Generation I, firmware 1.x)
@@ -88,6 +90,7 @@ All classes are in `Plugin/src/main/kotlin/io/twinklink/`:
 - `twinkly cloud recording/` contains captured Cloud API requests/responses for reference
 - Device IP addresses must be on the local network; the cloud only provides layout metadata
 - Deleting a single movie (`DELETE /xled/v1/movies/{unique_id}`) is not in the xled docs; it was captured from the Twinkly app, which only offers it for the last movie and switches movie mode off around it. `DELETE /xled/v1/movies` deletes all movies
+- Uploading a movie follows xled_plus `upload_movie`: `POST /xled/v1/movies/new` (name, unique_id, descriptor_type `rgb_raw`/`rgbw_raw`, leds_per_frame, frames_number, fps), then `POST /xled/v1/movies/full` with the frames as octet-stream, laid out like realtime frames. Creating a movie changes the current one, so a playing movie is selected again. The device stores uploads at about 56 KB/s (864 KB took 15 s), so the upload's timeout grows with its size
 
 ## External References
 

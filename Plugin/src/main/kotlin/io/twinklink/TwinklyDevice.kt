@@ -6,6 +6,7 @@ import io.twinklink.TwinkLink.Companion.unregisterDevice
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.UUID
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -28,6 +29,7 @@ class TwinklyDevice(
     private var streaming = false
     private var originalMode = "movie"
     private var originalBrightness = 50
+    private var movieFps: Int? = null
 
     init {
         registerDevice(this)
@@ -93,7 +95,8 @@ class TwinklyDevice(
     /** Locked, so it never sees the temporary modes of other requests. */
     suspend fun readMovieState(): MovieState = lock.withLock {
         val playingId = if (api.getMode() == "movie") api.getCurrentMovieId() else null
-        MovieState(api.getMovies(), playingId)
+        val fps = movieFps ?: (api.getFrameRate()?.toInt()?.coerceAtLeast(1) ?: DEFAULT_MOVIE_FPS).also { movieFps = it }
+        MovieState(api.getMovies(), playingId, fps)
     }
 
     /** Ends a running stream itself, as the fixture's enabled state can only be switched on the engine thread. */
@@ -125,6 +128,16 @@ class TwinklyDevice(
         }
     }
 
+    /** Stores a new movie. Creating it changes the current movie, so a playing one is selected again, as xled_plus does. */
+    suspend fun uploadMovie(name: String, descriptorType: String, ledsPerFrame: Int, fps: Int, frames: Int, data: ByteArray) {
+        lock.withLock {
+            val playingId = if (api.getMode() == "movie") api.getCurrentMovieId() else null
+            api.createMovie(name, UUID.randomUUID().toString(), descriptorType, ledsPerFrame, frames, fps)
+            api.uploadMovieFrames(data)
+            playingId?.let { api.setCurrentMovie(it) }
+        }
+    }
+
     /**
      * Restores the device before returning, so a new session for it can't overlap the restore.
      * Bounded, as an unreachable device must not hang the engine or the shutdown.
@@ -141,5 +154,7 @@ class TwinklyDevice(
         /** The device refuses movie mode once no movies are left. */
         private const val CODE_NO_MOVIES = 1104
         private val MOVIE_MODES = setOf("movie", "playlist")
+        /** Used when the device doesn't report its frame rate; the Twinkly app's movie rate. */
+        const val DEFAULT_MOVIE_FPS = 12
     }
 }
